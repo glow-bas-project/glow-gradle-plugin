@@ -1,0 +1,4 @@
+include:
+  - project: "backend-architecture-and-scalability/glow-devops"
+    ref: "ci/v1.0.3"
+    file: "/.gitlab/ci/entry/plugin-pipeline.yml"
