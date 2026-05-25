@@ -1,0 +1,100 @@
+plugins {
+    id 'java-gradle-plugin'
+    id 'groovy'
+    id 'maven-publish'
+}
+
+group = 'com.glow'
+version = findProperty('VERSION') ?: '0.1.0-SNAPSHOT'
+
+base {
+    archivesName = 'glow-gradle-plugin'
+}
+
+def pluginBuildJavaVersion = 21
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(pluginBuildJavaVersion)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation libs.spock.core
+
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+gradlePlugin {
+    plugins {
+        glowLocalEnv {
+            id = 'com.glow.local-env'
+            implementationClass = 'com.glow.GlowLocalEnvPlugin'
+            displayName = 'Glow Local Env Plugin'
+            description = 'Local edit-test loop: glowBuild builds a Docker image and starts this service on glow-devops compose.'
+        }
+    }
+}
+
+sourceSets {
+    functionalTest {
+    }
+}
+
+configurations.functionalTestImplementation.extendsFrom(configurations.testImplementation)
+configurations.functionalTestRuntimeOnly.extendsFrom(configurations.testRuntimeOnly)
+
+tasks.register('functionalTest', Test) {
+    testClassesDirs = sourceSets.functionalTest.output.classesDirs
+    classpath = sourceSets.functionalTest.runtimeClasspath
+    useJUnitPlatform()
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(pluginBuildJavaVersion)
+    }
+}
+
+gradlePlugin.testSourceSets.add(sourceSets.functionalTest)
+
+tasks.named('check') {
+    dependsOn(tasks.functionalTest)
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(pluginBuildJavaVersion)
+    }
+}
+
+tasks.withType(GroovyCompile).configureEach {
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(pluginBuildJavaVersion)
+    }
+}
+
+publishing {
+    repositories {
+        def ciApiV4Url = System.getenv('CI_API_V4_URL')
+        def ciProjectId = System.getenv('CI_PROJECT_ID')
+        def explicitUrl = findProperty('gitLabMavenUrl')
+        if (explicitUrl || (ciApiV4Url && ciProjectId)) {
+            maven {
+                name = 'GitLab'
+                if (explicitUrl) {
+                    url = uri(explicitUrl)
+                } else {
+                    url = uri("${ciApiV4Url}/projects/${ciProjectId}/packages/maven")
+                }
+
+                credentials {
+                    username = findProperty('gitLabMavenUser') ?: System.getenv('CI_DEPLOY_USER') ?: 'gitlab-ci-token'
+                    password = findProperty('gitLabMavenToken') ?: System.getenv('CI_JOB_TOKEN') ?: System.getenv('CI_DEPLOY_PASSWORD') ?: ''
+                }
+            }
+        }
+    }
+}
